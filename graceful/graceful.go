@@ -2,17 +2,20 @@ package graceful
 
 import (
 	"context"
+	"errors"
 	"os/signal"
 	"sync"
 	"syscall"
 )
 
+var ErrContextClosed = errors.New("context closed")
+
 type AbortableFunc func(context.Context)
 
 type Graceful interface {
 	Wait()
-	Add(...AbortableFunc)
-	AddWithCancel(...AbortableFunc) context.CancelFunc
+	Add(...AbortableFunc) error
+	AddWithCancel(...AbortableFunc) (context.CancelFunc, error)
 }
 
 type internalGraceful struct {
@@ -38,7 +41,11 @@ func (g *internalGraceful) Wait() {
 	g.wg.Wait()
 }
 
-func (g *internalGraceful) Add(afs ...AbortableFunc) {
+func (g *internalGraceful) Add(afs ...AbortableFunc) error {
+	if g.ctx.Err() != nil {
+		return ErrContextClosed
+	}
+
 	for _, af := range afs {
 		g.wg.Add(1)
 		go func() {
@@ -46,9 +53,14 @@ func (g *internalGraceful) Add(afs ...AbortableFunc) {
 			af(g.ctx)
 		}()
 	}
+	return nil
 }
 
-func (g *internalGraceful) AddWithCancel(afs ...AbortableFunc) context.CancelFunc {
+func (g *internalGraceful) AddWithCancel(afs ...AbortableFunc) (context.CancelFunc, error) {
+	if g.ctx.Err() != nil {
+		return nil, ErrContextClosed
+	}
+
 	ctx, cancel := context.WithCancel(g.ctx)
 	for _, af := range afs {
 		g.wg.Add(1)
@@ -57,5 +69,5 @@ func (g *internalGraceful) AddWithCancel(afs ...AbortableFunc) context.CancelFun
 			af(ctx)
 		}()
 	}
-	return cancel
+	return cancel, nil
 }
