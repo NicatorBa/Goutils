@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	"github.com/NicatorBa/Goutils/graceful/logging"
 )
 
 type (
@@ -25,13 +27,17 @@ func HttpListenAndServe(handler http.Handler, opts ...HttpListenAndServeOpt) Abo
 	}
 
 	return func(ctx context.Context) {
+		logger := logging.From(ctx)
 		srv := &http.Server{
 			Addr:    options.Addr,
 			Handler: handler,
 		}
 
 		go func() {
-			srv.ListenAndServe()
+			err := srv.ListenAndServe()
+			if err != nil {
+				logger.Error().Err(err).Msg("HTTP server error")
+			}
 		}()
 
 		<-ctx.Done()
@@ -39,7 +45,10 @@ func HttpListenAndServe(handler http.Handler, opts ...HttpListenAndServeOpt) Abo
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), options.ShutdownTimeout)
 		defer cancel()
 
-		srv.Shutdown(shutdownCtx)
+		err := srv.Shutdown(shutdownCtx)
+		if err != nil {
+			logger.Error().Err(err).Msg("HTTP server shutdown failed")
+		}
 	}
 }
 
