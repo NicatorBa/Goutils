@@ -18,7 +18,7 @@ type (
 	HttpListenAndServeOpt func(*HttpListenAndServeOptions) error
 )
 
-func HttpListenAndServe(handler http.Handler, opts ...HttpListenAndServeOpt) AbortableFunc {
+func HttpListenAndServe(handler http.Handler, opts ...HttpListenAndServeOpt) RunnerFunc {
 	options := HttpListenAndServeOptions{
 		ShutdownTimeout: 5 * time.Second,
 	}
