@@ -21,5 +21,8 @@ func With(ctx context.Context, l Logger) context.Context {
 }
 
 func From(ctx context.Context) Logger {
-	return ctx.Value(contextKey{}).(Logger)
+	if l, ok := ctx.Value(contextKey{}).(Logger); ok {
+		return l
+	}
+	return &NoopLogger{}
 }
