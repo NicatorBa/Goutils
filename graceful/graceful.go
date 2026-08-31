@@ -2,15 +2,13 @@ package graceful
 
 import (
 	"context"
-	"errors"
 	"os/signal"
+	"runtime/debug"
 	"sync"
 	"syscall"
 
 	"github.com/NicatorBa/Goutils/graceful/logging"
 )
-
-var ErrContextClosed = errors.New("context closed")
 
 type Runner interface {
 	Run(context.Context)
@@ -81,6 +79,7 @@ func New(opts ...OptionFunc) (Graceful, error) {
 }
 
 func (g *graceful) Wait() {
+	defer g.stop()
 	g.wg.Wait()
 }
 
@@ -113,7 +112,9 @@ func (g *graceful) AddWithCancel(rs ...Runner) (context.CancelFunc, error) {
 	return cancel, nil
 }
 
-func (g *graceful) initialize(rs []Runner) error {
+func (g *graceful) initialize(rs []Runner) (err error) {
+	defer recoverPanicIntoError(&err)
+
 	for _, r := range rs {
 		if init, ok := r.(Initializer); ok {
 			if err := init.Initialize(); err != nil {
@@ -127,7 +128,21 @@ func (g *graceful) initialize(rs []Runner) error {
 func (g *graceful) add(ctx context.Context, rs []Runner) {
 	for _, r := range rs {
 		g.wg.Go(func() {
+			defer g.recoverPanic()
 			r.Run(ctx)
 		})
+	}
+}
+
+func (g *graceful) recoverPanic() {
+	if r := recover(); r != nil {
+		err := &PanicError{Value: r, Stack: debug.Stack()}
+		logging.From(g.ctx).Error().Err(err).Msgf("runner panicked: %s", err.Stack)
+	}
+}
+
+func recoverPanicIntoError(err *error) {
+	if r := recover(); r != nil {
+		*err = &PanicError{Value: r, Stack: debug.Stack()}
 	}
 }
