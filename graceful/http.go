@@ -43,19 +43,28 @@ func (s *serverRunner) Run(ctx context.Context) {
 		Handler: s.handler,
 	}
 
+	serveErr := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			logger.Error().Err(err).Msg("HTTP server error")
-		}
+		serveErr <- srv.ListenAndServe()
 	}()
 
-	<-ctx.Done()
+	select {
+	case err := <-serveErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			logger.Error().Err(err).Msg("HTTP server error")
+		}
+	case <-ctx.Done():
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.options.ShutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error().Err(err).Msg("HTTP server shutdown failed")
+	}
+
+	if err := <-serveErr; !errors.Is(err, http.ErrServerClosed) {
+		logger.Error().Err(err).Msg("HTTP server error")
 	}
 }
 
